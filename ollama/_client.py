@@ -92,6 +92,7 @@ class BaseClient:
     - `auth_key_path`: Optional path to the Ed25519 private key for authentication
     `kwargs` are passed to the httpx client.
     """
+    print(f"auth_key_path: {auth_key_path}")
     self._auth = OllamaAuth(auth_key_path) if auth_key_path else None
     self._client = client(
       base_url=_parse_host(host or os.getenv('OLLAMA_HOST')),
@@ -122,6 +123,7 @@ class BaseClient:
       
       # Sign the request
       auth_token, timestamp = self._auth.sign_request(method, full_path)
+      print(f"auth_token: {auth_token}")
       
       # Add auth header
       if 'headers' not in kwargs:

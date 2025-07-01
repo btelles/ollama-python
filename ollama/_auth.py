@@ -4,9 +4,10 @@ import time
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
+from typing import Union
 
 class OllamaAuth:
-    def __init__(self, key_path: str = None):
+    def __init__(self, key_path: Union[str, None] = None):
         """Initialize the OllamaAuth class.
         
         Args:
