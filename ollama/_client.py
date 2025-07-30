@@ -90,8 +90,13 @@ class BaseClient:
     `kwargs` are passed to the httpx client.
     """
 
+    config = _parse_host(host or os.getenv('OLLAMA_HOST'))
+
+    # Combine parsed config with user-provided kwargs.
+    # User kwargs take precedence over URL-based config.
+    final_kwargs = {**config, **kwargs}
+
     self._client = client(
-      base_url=_parse_host(host or os.getenv('OLLAMA_HOST')),
       follow_redirects=follow_redirects,
       timeout=timeout,
       # Lowercase all headers to ensure override
@@ -104,8 +109,9 @@ class BaseClient:
           'User-Agent': f'ollama-python/{__version__} ({platform.machine()} {platform.system().lower()}) Python/{platform.python_version()}',
         }.items()
       },
-      **kwargs,
+      **final_kwargs,
     )
+
 
 
 CONNECTION_ERROR_MESSAGE = 'Failed to connect to Ollama. Please check that Ollama is downloaded, running and accessible. https://ollama.com/download'
@@ -1232,29 +1238,45 @@ def _parse_host(host: Optional[str]) -> str:
   'https://[0001:002:003:0004::1]:56789/path'
   >>> _parse_host('[0001:002:003:0004::1]:56789/path/')
   'http://[0001:002:003:0004::1]:56789/path'
+ >>> _parse_host(None)
+  {'base_url': 'http://127.0.0.1:11434'}
+  >>> _parse_host('https://user:password@ollama.mysite.com:11343')
+  {'base_url': 'https://ollama.mysite.com:11343', 'auth': ('user', 'password')}
   """
 
-  host, port = host or '', 11434
-  scheme, _, hostport = host.partition('://')
+  host_str, port = host or '', 11434
+  scheme, _, hostport = host_str.partition('://')
   if not hostport:
-    scheme, hostport = 'http', host
+    scheme, hostport = 'http', host_str
   elif scheme == 'http':
     port = 80
   elif scheme == 'https':
     port = 443
 
   split = urllib.parse.urlsplit(f'{scheme}://{hostport}')
-  host = split.hostname or '127.0.0.1'
+  hostname = split.hostname or '127.0.0.1'
   port = split.port or port
 
+  auth = None
+  if split.username:
+    # Create an auth tuple if a username is present in the URL
+    auth = httpx.BasicAuth(username=split.username, password=split.password or ''))
+
   try:
-    if isinstance(ipaddress.ip_address(host), ipaddress.IPv6Address):
+    if isinstance(ipaddress.ip_address(hostname), ipaddress.IPv6Address):
       # Fix missing square brackets for IPv6 from urlsplit
-      host = f'[{host}]'
+      hostname = f'[{hostname}]'
   except ValueError:
     ...
 
-  if path := split.path.strip('/'):
-    return f'{scheme}://{host}:{port}/{path}'
-
-  return f'{scheme}://{host}:{port}'
+  path = split.path.strip('/')
+  base_url = f'{scheme}://{hostname}:{port}'
+  if path:
+    base_url = f'{base_url}/{path}'
+  
+  # Return a dictionary with client configuration
+  config = {'base_url': base_url}
+  if auth:
+    config['auth'] = auth
+  
+  return config
